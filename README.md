@@ -11,7 +11,7 @@ This project is a React implementation of the E-Card game from the anime Kaiji, 
 ### File Structure
 
 Ensure your project has the following file structure. The `docker-compose up` command should be run from the root directory where `docker-compose.yml` is located.
-/
+```/
 ├── .dockerignore
 ├── docker-compose.yml
 ├── Dockerfile
@@ -20,7 +20,7 @@ Ensure your project has the following file structure. The `docker-compose up` co
 │   └── index.html
 └── src/
 ├── App.jsx
-└── index.js
+└── index.js```
 
 ### Installation & Running the App
 
