@@ -1,266 +1,423 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, onSnapshot, updateDoc, collection, addDoc, getDoc } from "firebase/firestore";
 
-// --- SVG Icons for Cards ---
-const EmperorIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400">
-    <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/>
-  </svg>
-);
-const CitizenIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300">
-    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-    <circle cx="12" cy="7" r="4"/>
-  </svg>
-);
-const SlaveIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
-    <path d="M14 13V8a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v5"/>
-    <path d="M8 13v5a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-5"/>
-    <path d="M16 13a2 2 0 0 1-2-2h- verduras.2c-.4 0-.8.2-1 .5"/>
-    <path d="M8 13a2 2 0 0 0 2 2h.2c.4 0 .8-.2 1-.5"/>
-    <path d="M5 10H3.5a2.5 2.5 0 0 1 0-5H5"/>
-    <path d="M19 10h1.5a2.5 2.5 0 0 0 0-5H19"/>
-  </svg>
-);
+// --- Firebase Configuration ---
+// IMPORTANT: Replace this with the config object from your Firebase project
+const firebaseConfig = {
+  apiKey: "AIzaSyAm3-L6I0S_2WAj-TMo2PLy7BazA472puM",
+  authDomain: "ecard-kaiji-game.firebaseapp.com",
+  projectId: "ecard-kaiji-game",
+  storageBucket: "ecard-kaiji-game.firebasestorage.app",
+  messagingSenderId: "309498290947",
+  appId: "1:309498290947:web:e41051265068e9da84ff36",
+  measurementId: "G-ZS1ZB2BBV5"
+};
+
+// Initialize Firebase and Firestore
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 
 // --- Game Constants ---
-const CARDS = {
-    E: { name: "Emperor", icon: <EmperorIcon /> },
-    C: { name: "Citizen", icon: <CitizenIcon /> },
-    S: { name: "Slave", icon: <SlaveIcon /> }
-};
+const EMPEROR = "E";
+const CITIZEN = "C";
+const SLAVE = "S";
 const MAX_ROUNDS = 12;
-const ROUNDS_PER_SET = 4;
-const EMPEROR_HAND = ['E', 'C', 'C', 'C', 'C'];
-const SLAVE_HAND = ['S', 'C', 'C', 'C', 'C'];
+const SWAP_ROUND = 4; // Swaps after round 3 (on round 4)
 
-// --- Main App Component ---
-export default function App() {
-    const [gameState, setGameState] = useState('START'); // START, P1_TURN, P2_TURN, REVEAL, ROUND_END, GAME_OVER
-    const [round, setRound] = useState(1);
-    const [p1Score, setP1Score] = useState(0);
-    const [p2Score, setP2Score] = useState(0);
+// --- Helper Functions ---
+const getInitialHand = (role) => {
+    return role === 'emperor' ? [EMPEROR, ...Array(4).fill(CITIZEN)] : [SLAVE, ...Array(4).fill(CITIZEN)];
+};
 
-    const [p1Role, setP1Role] = useState('Emperor');
-    const [p1Hand, setP1Hand] = useState([]);
-    const [p2Hand, setP2Hand] = useState([]);
+// --- Child Components ---
 
-    const [p1Choice, setP1Choice] = useState(null);
-    const [p2Choice, setP2Choice] = useState(null);
-    
-    const [message, setMessage] = useState("Welcome to the E-Card Game. The Emperor's side begins.");
-    const [reveal, setReveal] = useState(false);
+const Card = ({ value, isSelected, onClick, isDisabled }) => {
+    const baseStyle = "w-20 h-28 md:w-28 md:h-40 rounded-lg flex items-center justify-center text-white font-bold text-2xl md:text-4xl shadow-lg transition-all duration-200 transform hover:scale-105";
+    const selectedStyle = "ring-4 ring-yellow-400 scale-105 shadow-yellow-500/50";
+    const disabledStyle = "opacity-50 cursor-not-allowed";
 
-    const resetHandsForNewMatch = useCallback(() => {
-        const isSwapped = Math.floor((round - 1) / ROUNDS_PER_SET) % 2 !== 0;
-        const newP1Role = isSwapped ? 'Slave' : 'Emperor';
-        const newP2Role = isSwapped ? 'Emperor' : 'Slave';
-        
-        setP1Role(newP1Role);
-        setP1Hand(newP1Role === 'Emperor' ? [...EMPEROR_HAND] : [...SLAVE_HAND]);
-        setP2Hand(newP2Role === 'Emperor' ? [...EMPEROR_HAND] : [...SLAVE_HAND]);
-    }, [round]);
-
-    useEffect(() => {
-        if (gameState === 'START' || gameState === 'NEXT_MATCH') {
-            resetHandsForNewMatch();
-            setP1Choice(null);
-            setP2Choice(null);
-            setReveal(false);
-            setGameState('P1_TURN');
-            const currentSet = Math.floor((round - 1) / ROUNDS_PER_SET) + 1;
-            setMessage(`Match ${round}/${MAX_ROUNDS}. Set ${currentSet}. ${p1Role}'s turn to choose.`);
+    const getCardStyle = (card) => {
+        switch (card) {
+            case EMPEROR: return "bg-gradient-to-br from-purple-600 to-indigo-800";
+            case CITIZEN: return "bg-gradient-to-br from-gray-600 to-gray-800";
+            case SLAVE: return "bg-gradient-to-br from-red-600 to-red-800";
+            default: return "bg-gray-700";
         }
-    }, [gameState, round, p1Role, resetHandsForNewMatch]);
-
-    const handleCardSelect = (player, card, index) => {
-        if (player === 'P1' && gameState === 'P1_TURN') {
-            setP1Choice(card);
-            const newHand = [...p1Hand];
-            newHand.splice(index, 1);
-            setP1Hand(newHand);
-            setGameState('P2_TURN');
-            setMessage("Player 2 (Slave's side), choose your card.");
-        } else if (player === 'P2' && gameState === 'P2_TURN') {
-            setP2Choice(card);
-            const newHand = [...p2Hand];
-            newHand.splice(index, 1);
-            setP2Hand(newHand);
-            setGameState('REVEAL');
-            setMessage('Both players have chosen. Reveal the cards!');
-        }
-    };
-    
-    const determineWinner = () => {
-        setReveal(true);
-        const p2Role = p1Role === 'Emperor' ? 'Slave' : 'Emperor';
-        let roundWinner = null; // P1, P2, DRAW
-        let winnerMessage = "";
-
-        if (p1Choice === p2Choice) {
-            roundWinner = 'DRAW';
-            winnerMessage = "It's a draw! The cards are discarded.";
-        } else if (
-            (p1Choice === 'E' && p2Choice === 'C') ||
-            (p1Choice === 'C' && p2Choice === 'S')
-        ) {
-            roundWinner = p1Role === 'Emperor' ? 'P1' : 'P2';
-        } else if (
-            (p2Choice === 'E' && p1Choice === 'C') ||
-            (p2Choice === 'C' && p1Choice === 'S')
-        ) {
-            roundWinner = p2Role === 'Emperor' ? 'P2' : 'P1';
-        } else if (p1Choice === 'E' && p2Choice === 'S') {
-            roundWinner = p1Role === 'Emperor' ? 'P2' : 'P1'; // Slave side wins
-        } else if (p2Choice === 'E' && p1Choice === 'S') {
-            roundWinner = p2Role === 'Emperor' ? 'P1' : 'P2'; // Slave side wins
-        }
-        
-        if (roundWinner !== 'DRAW') {
-             const winningSide = (roundWinner === 'P1' ? p1Role : p2Role);
-             const points = winningSide === 'Slave' ? 5 : 1;
-             winnerMessage = `${winningSide} side wins this match and gets ${points} point(s)!`;
-             if(roundWinner === 'P1') setP1Score(s => s + points);
-             else setP2Score(s => s + points);
-        }
-        
-        setMessage(winnerMessage);
-        setGameState('ROUND_END');
-    };
-    
-    const handleNextAction = () => {
-        if (gameState === 'ROUND_END') {
-            if (p1Hand.length === 0 || (p1Choice !== p2Choice)) { // Match ends on win/loss or out of cards
-                if (round + 1 > MAX_ROUNDS) {
-                    setGameState('GAME_OVER');
-                     const finalWinner = p1Score > p2Score ? "Player 1" : (p2Score > p1Score ? "Player 2" : "No one");
-                    setMessage(`Game Over! ${finalWinner} wins the gamble!`);
-                } else {
-                    setRound(r => r + 1);
-                    setGameState('NEXT_MATCH');
-                }
-            } else { // It was a draw, continue with remaining cards
-                setP1Choice(null);
-                setP2Choice(null);
-                setReveal(false);
-                setGameState('P1_TURN');
-                setMessage(`Match ${round}/${MAX_ROUNDS}. Cards discarded. ${p1Role}'s turn.`);
-            }
-        }
-    };
-
-    const restartGame = () => {
-        setGameState('START');
-        setRound(1);
-        setP1Score(0);
-        setP2Score(0);
-        setP1Role('Emperor');
-        setP1Choice(null);
-        setP2Choice(null);
-        setMessage("A new game begins. The Emperor's side starts.");
-    };
-
-    const Card = ({ card, isPlayer, isFaceDown, onClick }) => {
-        const baseStyle = "w-24 h-36 md:w-32 md:h-48 m-2 rounded-lg shadow-lg border-2 flex flex-col items-center justify-center transition-all duration-300 transform";
-        const playerStyle = "cursor-pointer hover:scale-105 hover:shadow-2xl hover:-translate-y-2";
-        const faceDownStyle = "bg-gray-700 border-gray-500";
-        const faceUpStyle = "bg-gray-800 border-gray-400";
-        
-        if(isFaceDown) {
-            return (
-                <div className={`${baseStyle} ${faceDownStyle}`}>
-                    <div className="text-5xl text-red-600 font-serif">?</div>
-                </div>
-            );
-        }
-        
-        return (
-            <div className={`${baseStyle} ${faceUpStyle} ${isPlayer ? playerStyle : ''}`} onClick={onClick}>
-                {CARDS[card].icon}
-                <span className="text-white font-bold mt-2 text-lg">{CARDS[card].name}</span>
-            </div>
-        );
     };
 
     return (
-        <main className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
-            <div className="absolute inset-0 bg-black opacity-50 z-0"></div>
-            <div className="w-full max-w-7xl mx-auto z-10">
-                
-                {/* --- Game Header --- */}
-                <header className="text-center mb-4">
-                    <h1 className="text-4xl md:text-5xl font-bold text-red-600 tracking-wider font-serif">E-CARD</h1>
-                    <p className="text-gray-400">A Game of Deception and Power</p>
-                </header>
+        <button
+            onClick={onClick}
+            disabled={isDisabled}
+            className={`${baseStyle} ${getCardStyle(value)} ${isSelected ? selectedStyle : ''} ${isDisabled ? disabledStyle : ''}`}
+        >
+            {value}
+        </button>
+    );
+};
 
-                {/* --- Player 2 (Top) --- */}
-                <div className="player-area mb-4 min-h-[220px]">
-                    <h2 className="text-xl text-center mb-2">
-                        Player 2 <span className="text-sm font-mono p-1 rounded bg-gray-700">{p1Role === 'Emperor' ? "Slave" : "Emperor"} Side</span>
-                    </h2>
-                    <div className="flex justify-center flex-wrap">
-                       {p2Hand.map((card, i) => (
-                           <Card 
-                               key={i} 
-                               card={card} 
-                               isPlayer={gameState === 'P2_TURN'} 
-                               isFaceDown={gameState !== 'P2_TURN'} 
-                               onClick={() => handleCardSelect('P2', card, i)} 
-                           />
-                       ))}
-                       {p2Hand.length === 0 && !p2Choice && <div className="text-gray-500 italic">No cards left</div>}
+const GameLobby = ({ createGame, joinGame, gameIdInput, setGameIdInput, error }) => (
+    <div className="w-full max-w-md mx-auto bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl shadow-2xl text-center">
+        <h1 className="text-5xl font-extrabold text-white mb-2">E-CARD</h1>
+        <p className="text-yellow-400 mb-8 font-semibold">The Emperor's Gamble</p>
+
+        <button
+            onClick={createGame}
+            className="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-700 transition-all duration-300 transform hover:scale-105 mb-4 text-lg"
+        >
+            Create New Game
+        </button>
+
+        <div className="flex items-center my-6">
+            <hr className="flex-grow border-gray-600" />
+            <span className="px-4 text-gray-400 font-bold">OR</span>
+            <hr className="flex-grow border-gray-600" />
+        </div>
+
+        <div className="space-y-4">
+            <input
+                type="text"
+                placeholder="Enter Game ID"
+                value={gameIdInput}
+                onChange={(e) => setGameIdInput(e.target.value.trim())}
+                className="w-full text-center bg-gray-700 text-white placeholder-gray-400 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            />
+            <button
+                onClick={joinGame}
+                className="w-full bg-gray-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-700 transition-all duration-300 transform hover:scale-105 text-lg"
+            >
+                Join Game
+            </button>
+        </div>
+        {error && <p className="text-red-500 mt-4 animate-pulse">{error}</p>}
+    </div>
+);
+
+
+// --- Main App Component ---
+function App() {
+    const [gameId, setGameId] = useState(null);
+    const [gameData, setGameData] = useState(null);
+    const [playerId, setPlayerId] = useState(null);
+    const [gameIdInput, setGameIdInput] = useState("");
+    const [error, setError] = useState("");
+    const [selectedCard, setSelectedCard] = useState(null);
+
+    // Persist playerId in localStorage
+    useEffect(() => {
+        const storedPlayerId = localStorage.getItem('e-card-playerId');
+        if (storedPlayerId) {
+            setPlayerId(storedPlayerId);
+        } else {
+            const newPlayerId = `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            localStorage.setItem('e-card-playerId', newPlayerId);
+            setPlayerId(newPlayerId);
+        }
+    }, []);
+
+    // Subscribe to game updates
+    useEffect(() => {
+        if (!gameId) return;
+        const unsub = onSnapshot(doc(db, "games", gameId), (doc) => {
+            if (doc.exists()) {
+                setGameData(doc.data());
+            } else {
+                setError("Game not found. It might have been deleted.");
+                setGameId(null);
+            }
+        });
+        return () => unsub();
+    }, [gameId]);
+
+
+    const createGame = async () => {
+        if (!playerId) return;
+        const newGameRef = await addDoc(collection(db, "games"), {
+            players: { [playerId]: { role: 'emperor', score: 0 } },
+            round: 1,
+            playerCount: 1,
+            status: 'waiting',
+            choices: {},
+            roundWinner: null,
+            lastRoundResult: null,
+            createdAt: new Date(),
+        });
+        setGameId(newGameRef.id);
+        setError("");
+    };
+
+    const joinGame = async () => {
+        if (!gameIdInput || !playerId) return;
+        const gameRef = doc(db, "games", gameIdInput);
+        const gameSnap = await getDoc(gameRef);
+
+        if (gameSnap.exists()) {
+            const game = gameSnap.data();
+            if (game.playerCount < 2 && !game.players[playerId]) {
+                 await updateDoc(gameRef, {
+                    [`players.${playerId}`]: { role: 'slave', score: 0 },
+                    playerCount: 2,
+                    status: 'playing',
+                });
+                setGameId(gameIdInput);
+                setError("");
+            } else if (game.players[playerId]) {
+                setGameId(gameIdInput); // Allow rejoining
+                setError("");
+            } else {
+                setError("Game is already full.");
+            }
+        } else {
+            setError("Game ID not found.");
+        }
+    };
+
+
+    const playCard = async () => {
+        if (!selectedCard || !gameData || !playerId) return;
+
+        const myRole = gameData.players[playerId]?.role;
+        const currentHand = getInitialHand(myRole); // Get fresh hand based on role
+        
+        if (!currentHand.includes(selectedCard)) {
+            setError("You don't have that card!");
+            return;
+        }
+        
+        await updateDoc(doc(db, "games", gameId), {
+            [`choices.${playerId}`]: selectedCard
+        });
+        setSelectedCard(null); // Deselect after playing
+    };
+
+    const nextRound = useCallback(async () => {
+        if (!gameData || Object.keys(gameData.players).length < 2) return;
+
+        let { round, players } = gameData;
+        const playerIds = Object.keys(players);
+        const p1_id = playerIds.find(id => players[id].role === 'emperor');
+        const p2_id = playerIds.find(id => players[id].role === 'slave');
+
+        if (!p1_id || !p2_id) return; // a player might have left
+
+        const choice1 = gameData.choices[p1_id];
+        const choice2 = gameData.choices[p2_id];
+        let winnerId = null;
+
+        if (choice1 === EMPEROR && choice2 === CITIZEN) winnerId = p1_id;
+        if (choice1 === CITIZEN && choice2 === SLAVE) winnerId = p1_id;
+        if (choice1 === SLAVE && choice2 === EMPEROR) winnerId = p1_id; 
+
+        if (choice1 === CITIZEN && choice2 === EMPEROR) winnerId = p2_id;
+        if (choice1 === SLAVE && choice2 === CITIZEN) winnerId = p2_id;
+        if (choice1 === EMPEROR && choice2 === SLAVE) winnerId = p2_id;
+
+        if(winnerId) {
+             players[winnerId].score += 1;
+        }
+
+        const newRound = round + 1;
+        let newP1Role = players[p1_id].role;
+        let newP2Role = players[p2_id].role;
+        
+        // Swap roles after SWAP_ROUND
+        if (round === SWAP_ROUND -1) { // Logic to swap going INTO round 4
+             newP1Role = 'slave';
+             newP2Role = 'emperor';
+        }
+
+        players[p1_id].role = newP1Role;
+        players[p2_id].role = newP2Role;
+        
+        await updateDoc(doc(db, "games", gameId), {
+            round: newRound,
+            status: newRound > MAX_ROUNDS ? 'finished' : 'playing',
+            choices: {},
+            roundWinner: winnerId,
+            lastRoundResult: {
+                [p1_id]: choice1,
+                [p2_id]: choice2,
+                winnerId: winnerId,
+            },
+            players: players
+        });
+    }, [gameData, gameId]);
+
+    useEffect(() => {
+        if (gameData && gameData.status === 'playing' && Object.keys(gameData.choices).length === 2) {
+           const timer = setTimeout(() => {
+                nextRound();
+           }, 4000); // Wait 4 seconds to show results
+           return () => clearTimeout(timer);
+        }
+    }, [gameData, nextRound]);
+
+
+    // --- Render Logic ---
+
+    if (!playerId) {
+        return <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">Loading...</div>;
+    }
+
+    if (!gameId || !gameData) {
+        return (
+            <main className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center p-4">
+                <GameLobby
+                    createGame={createGame}
+                    joinGame={joinGame}
+                    gameIdInput={gameIdInput}
+                    setGameIdInput={setGameIdInput}
+                    error={error}
+                />
+            </main>
+        );
+    }
+    
+    // --- In-Game Render ---
+    const myRole = gameData.players[playerId]?.role;
+    const opponentId = Object.keys(gameData.players).find(id => id !== playerId);
+    const opponent = opponentId ? gameData.players[opponentId] : null;
+    const myHand = getInitialHand(myRole);
+
+    const myChoice = gameData.choices[playerId];
+    const opponentChoice = opponentId ? gameData.choices[opponentId] : null;
+
+    const showRoundResult = gameData.lastRoundResult && gameData.round > 1;
+    const isWaitingForNextRound = Object.keys(gameData.choices).length === 2;
+
+
+    if (gameData.status === 'waiting') {
+        return (
+            <main className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
+                 <h2 className="text-3xl font-bold mb-4">Waiting for Opponent...</h2>
+                 <p className="text-gray-400 mb-6">Share this Game ID with a friend:</p>
+                 <div className="bg-gray-800 p-4 rounded-lg cursor-pointer" onClick={() => navigator.clipboard.writeText(gameId)}>
+                    <strong className="text-2xl font-mono tracking-widest text-yellow-400">{gameId}</strong>
+                    <p className="text-xs text-gray-500 mt-2">Click to copy</p>
+                 </div>
+            </main>
+        )
+    }
+
+    if (gameData.status === 'finished') {
+        const myFinalScore = gameData.players[playerId]?.score || 0;
+        const opponentFinalScore = opponent?.score || 0;
+        let resultMessage = "The game is a draw.";
+        if (myFinalScore > opponentFinalScore) resultMessage = "You are victorious!";
+        if (myFinalScore < opponentFinalScore) resultMessage = "You have been defeated.";
+
+        return (
+             <main className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 text-center">
+                 <h2 className="text-5xl font-bold mb-4">Game Over</h2>
+                 <p className="text-2xl text-yellow-400 mb-8">{resultMessage}</p>
+                 <div className="text-xl space-y-2">
+                    <p>Your Score: <strong className="text-white text-2xl">{myFinalScore}</strong></p>
+                    <p>Opponent's Score: <strong className="text-white text-2xl">{opponentFinalScore}</strong></p>
+                 </div>
+            </main>
+        )
+    }
+
+    return (
+        <main className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white p-4 pt-8 sm:p-8">
+            <div className="max-w-4xl mx-auto">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-yellow-400">Round {gameData.round} / {MAX_ROUNDS}</h1>
+                        <p className="text-gray-400 text-sm">Game ID: {gameId}</p>
+                    </div>
+                    <div className="text-right">
+                        <p>You: <span className="font-bold">{gameData.players[playerId]?.score || 0}</span></p>
+                        <p>Opponent: <span className="font-bold">{opponent?.score || 0}</span></p>
                     </div>
                 </div>
 
-                {/* --- Game Board (Middle) --- */}
-                <div className="game-board bg-black bg-opacity-40 rounded-xl shadow-2xl p-4 md:p-6 my-4 border border-gray-700 flex flex-col items-center min-h-[300px]">
-                    <div className="flex justify-between w-full text-lg mb-4">
-                        <div className="p-2 bg-blue-900 rounded-lg">P1 Score: <span className="font-bold">{p1Score}</span></div>
-                        <div className="p-2 font-bold text-2xl">Match: {round}</div>
-                        <div className="p-2 bg-red-900 rounded-lg">P2 Score: <span className="font-bold">{p2Score}</span></div>
+                {/* Opponent Area */}
+                <div className="mb-8 p-4 bg-black/30 rounded-lg min-h-[12rem] flex flex-col items-center justify-center border-2 border-gray-700">
+                    <h2 className="text-lg font-semibold text-gray-400 mb-2">Opponent's Side</h2>
+                    <div className="flex items-center justify-center">
+                        {opponentChoice ? (
+                            <div className="text-center">
+                                <p className="mb-2">Opponent has played</p>
+                                <div className="w-20 h-28 md:w-28 md:h-40 rounded-lg bg-gradient-to-br from-gray-700 to-black flex items-center justify-center text-white font-bold text-5xl shadow-lg">
+                                    ?
+                                </div>
+                            </div>
+                        ) : (
+                             <div className="w-20 h-28 md:w-28 md:h-40 rounded-lg bg-gray-700 animate-pulse flex items-center justify-center">
+                                <span className="text-gray-400 text-sm">Waiting</span>
+                             </div>
+                        )}
                     </div>
-                    
-                    <div className="flex items-center justify-around w-full flex-grow my-4">
-                        <div className="flex flex-col items-center">
-                            <h3 className="mb-2">Player 1's Play</h3>
-                            {p1Choice ? <Card card={p1Choice} isFaceDown={!reveal} /> : <div className="w-24 h-36 md:w-32 md:h-48 rounded-lg bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center"><span className="text-gray-500">Waiting...</span></div>}
+                </div>
+
+                {/* Player Area */}
+                <div className="p-4 bg-black/30 rounded-lg min-h-[20rem] flex flex-col items-center justify-center border-2 border-blue-800/50">
+                    <h2 className="text-lg font-semibold text-yellow-400 mb-2">Your Side - Role: <span className="capitalize">{myRole}</span></h2>
+                    {myChoice ? (
+                         <div className="text-center">
+                            <p className="mb-2">You Played:</p>
+                            <Card value={myChoice} isDisabled={true} />
+                            <p className="mt-4 text-gray-400 animate-pulse">Waiting for opponent...</p>
                         </div>
-                        
-                        <div className="text-4xl font-bold text-red-500 animate-pulse">VS</div>
-                        
-                        <div className="flex flex-col items-center">
-                            <h3 className="mb-2">Player 2's Play</h3>
-                            {p2Choice ? <Card card={p2Choice} isFaceDown={!reveal} /> : <div className="w-24 h-36 md:w-32 md:h-48 rounded-lg bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center"><span className="text-gray-500">Waiting...</span></div>}
+                    ) : (
+                        <>
+                            <div className="flex space-x-2 sm:space-x-4 mb-6">
+                                {myHand.map((card, index) => (
+                                    <Card
+                                        key={index}
+                                        value={card}
+                                        isSelected={selectedCard === card}
+                                        onClick={() => setSelectedCard(card)}
+                                    />
+                                ))}
+                            </div>
+                             <button
+                                onClick={playCard}
+                                disabled={!selectedCard}
+                                className="px-8 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors duration-300"
+                            >
+                                Confirm Play
+                            </button>
+                        </>
+                    )}
+                </div>
+
+                {/* Round Result Modal */}
+                {isWaitingForNextRound && showRoundResult && (
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+                        <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl text-center animate-fade-in-up">
+                             <h3 className="text-3xl font-bold mb-4">Round {gameData.round - 1} Result</h3>
+                            <div className="flex justify-center space-x-8 mb-6">
+                                <div>
+                                    <p className="font-semibold">You Played</p>
+                                    <Card value={gameData.lastRoundResult[playerId]} isDisabled={true} />
+                                </div>
+                                {opponentId && gameData.lastRoundResult[opponentId] && (
+                                  <div>
+                                      <p className="font-semibold">Opponent Played</p>
+                                      <Card value={gameData.lastRoundResult[opponentId]} isDisabled={true} />
+                                  </div>
+                                )}
+                            </div>
+                            {gameData.lastRoundResult.winnerId ? (
+                                <p className="text-2xl text-yellow-400">
+                                    {gameData.lastRoundResult.winnerId === playerId ? "You Win This Round!" : "You Lose This Round."}
+                                </p>
+                            ) : (
+                                <p className="text-2xl text-gray-400">Draw!</p>
+                            )}
                         </div>
                     </div>
+                )}
 
-                    <div className="text-center min-h-[60px] flex flex-col justify-center items-center mt-4">
-                        <p className="text-xl text-yellow-300 mb-2">{message}</p>
-                        {gameState === 'REVEAL' && <button onClick={determineWinner} className="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-bold transition-colors">REVEAL</button>}
-                        {gameState === 'ROUND_END' && <button onClick={handleNextAction} className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-bold transition-colors">Continue</button>}
-                        {gameState === 'GAME_OVER' && <button onClick={restartGame} className="px-6 py-2 bg-yellow-500 text-black hover:bg-yellow-600 rounded-lg font-bold transition-colors">Play Again</button>}
-                    </div>
-                </div>
-
-                {/* --- Player 1 (Bottom) --- */}
-                <div className="player-area mt-4 min-h-[220px]">
-                     <h2 className="text-xl text-center mb-2">
-                        Player 1 <span className="text-sm font-mono p-1 rounded bg-gray-700">{p1Role} Side</span>
-                    </h2>
-                    <div className="flex justify-center flex-wrap">
-                        {p1Hand.map((card, i) => (
-                           <Card 
-                               key={i} 
-                               card={card} 
-                               isPlayer={gameState === 'P1_TURN'} 
-                               onClick={() => handleCardSelect('P1', card, i)} 
-                           />
-                       ))}
-                       {p1Hand.length === 0 && !p1Choice && <div className="text-gray-500 italic">No cards left</div>}
-                    </div>
-                </div>
             </div>
         </main>
     );
 }
+
+export default App;
 
