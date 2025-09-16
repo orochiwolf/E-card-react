@@ -134,8 +134,9 @@ function App() {
 
     const createGame = async () => {
         if (!playerId) return;
+        const initialHand = getInitialHand('emperor');
         const newGameRef = await addDoc(collection(db, "games"), {
-            players: { [playerId]: { role: 'emperor', score: 0 } },
+            players: { [playerId]: { role: 'emperor', score: 0, hand: initialHand } },
             round: 1,
             playerCount: 1,
             status: 'waiting',
@@ -156,8 +157,9 @@ function App() {
         if (gameSnap.exists()) {
             const game = gameSnap.data();
             if (game.playerCount < 2 && !game.players[playerId]) {
+                 const initialHand = getInitialHand('slave');
                  await updateDoc(gameRef, {
-                    [`players.${playerId}`]: { role: 'slave', score: 0 },
+                    [`players.${playerId}`]: { role: 'slave', score: 0, hand: initialHand },
                     playerCount: 2,
                     status: 'playing',
                 });
@@ -178,16 +180,21 @@ function App() {
     const playCard = async () => {
         if (!selectedCard || !gameData || !playerId) return;
 
-        const myRole = gameData.players[playerId]?.role;
-        const currentHand = getInitialHand(myRole); // Get fresh hand based on role
-        
-        if (!currentHand.includes(selectedCard)) {
-            setError("You don't have that card!");
+        const myCurrentHand = gameData.players[playerId]?.hand;
+        if (!myCurrentHand || !myCurrentHand.includes(selectedCard)) {
+            setError("Invalid card choice.");
             return;
+        }
+
+        const cardIndex = myCurrentHand.indexOf(selectedCard);
+        const newHand = [...myCurrentHand];
+        if (cardIndex > -1) {
+            newHand.splice(cardIndex, 1);
         }
         
         await updateDoc(doc(db, "games", gameId), {
-            [`choices.${playerId}`]: selectedCard
+            [`choices.${playerId}`]: selectedCard,
+            [`players.${playerId}.hand`]: newHand
         });
         setSelectedCard(null); // Deselect after playing
     };
@@ -197,52 +204,69 @@ function App() {
 
         let { round, players } = gameData;
         const playerIds = Object.keys(players);
-        const p1_id = playerIds.find(id => players[id].role === 'emperor');
-        const p2_id = playerIds.find(id => players[id].role === 'slave');
+        const emperorPlayerId = playerIds.find(id => players[id].role === 'emperor');
+        const slavePlayerId = playerIds.find(id => players[id].role === 'slave');
 
-        if (!p1_id || !p2_id) return; // a player might have left
+        if (!emperorPlayerId || !slavePlayerId || !gameData.choices[emperorPlayerId] || !gameData.choices[slavePlayerId]) {
+            return; 
+        }
 
-        const choice1 = gameData.choices[p1_id];
-        const choice2 = gameData.choices[p2_id];
+        const emperorChoice = gameData.choices[emperorPlayerId];
+        const slaveChoice = gameData.choices[slavePlayerId];
         let winnerId = null;
 
-        if (choice1 === EMPEROR && choice2 === CITIZEN) winnerId = p1_id;
-        if (choice1 === CITIZEN && choice2 === SLAVE) winnerId = p1_id;
-        if (choice1 === SLAVE && choice2 === EMPEROR) winnerId = p1_id; 
-
-        if (choice1 === CITIZEN && choice2 === EMPEROR) winnerId = p2_id;
-        if (choice1 === SLAVE && choice2 === CITIZEN) winnerId = p2_id;
-        if (choice1 === EMPEROR && choice2 === SLAVE) winnerId = p2_id;
-
-        if(winnerId) {
-             players[winnerId].score += 1;
+        // Determine winner based on card interactions
+        if (emperorChoice === EMPEROR && slaveChoice === SLAVE) {
+            winnerId = slavePlayerId;
+        } else if (emperorChoice === EMPEROR && slaveChoice === CITIZEN) {
+            winnerId = emperorPlayerId;
+        } else if (emperorChoice === CITIZEN && slaveChoice === SLAVE) {
+            winnerId = emperorPlayerId;
+        } else if (emperorChoice === CITIZEN && slaveChoice === CITIZEN) {
+            winnerId = null; // Draw
         }
-
-        const newRound = round + 1;
-        let newP1Role = players[p1_id].role;
-        let newP2Role = players[p2_id].role;
         
-        // Swap roles after SWAP_ROUND
-        if (round === SWAP_ROUND -1) { // Logic to swap going INTO round 4
-             newP1Role = 'slave';
-             newP2Role = 'emperor';
+        const lastRoundResult = {
+            [emperorPlayerId]: emperorChoice,
+            [slavePlayerId]: slaveChoice,
+            winnerId: winnerId,
+        };
+
+        if (winnerId) {
+            // WINNER - END OF ROUND
+            players[winnerId].score += (winnerId === slavePlayerId && emperorChoice === EMPEROR) ? 5 : 1;
+            
+            const newRound = round + 1;
+            let newEmperorRole = players[emperorPlayerId].role;
+            let newSlaveRole = players[slavePlayerId].role;
+            
+            if (round === SWAP_ROUND - 1) {
+                newEmperorRole = 'slave';
+                newSlaveRole = 'emperor';
+            }
+    
+            players[emperorPlayerId].role = newEmperorRole;
+            players[slavePlayerId].role = newSlaveRole;
+            
+            players[emperorPlayerId].hand = getInitialHand(newEmperorRole);
+            players[slavePlayerId].hand = getInitialHand(newSlaveRole);
+            
+            await updateDoc(doc(db, "games", gameId), {
+                round: newRound,
+                status: newRound > MAX_ROUNDS ? 'finished' : 'playing',
+                choices: {},
+                roundWinner: winnerId,
+                lastRoundResult: lastRoundResult,
+                players: players
+            });
+        } else {
+            // DRAW - ROUND CONTINUES
+            await updateDoc(doc(db, "games", gameId), {
+                choices: {},
+                roundWinner: null,
+                lastRoundResult: lastRoundResult,
+            });
         }
-
-        players[p1_id].role = newP1Role;
-        players[p2_id].role = newP2Role;
-        
-        await updateDoc(doc(db, "games", gameId), {
-            round: newRound,
-            status: newRound > MAX_ROUNDS ? 'finished' : 'playing',
-            choices: {},
-            roundWinner: winnerId,
-            lastRoundResult: {
-                [p1_id]: choice1,
-                [p2_id]: choice2,
-                winnerId: winnerId,
-            },
-            players: players
-        });
     }, [gameData, gameId]);
 
     useEffect(() => {
@@ -279,12 +303,12 @@ function App() {
     const myRole = gameData.players[playerId]?.role;
     const opponentId = Object.keys(gameData.players).find(id => id !== playerId);
     const opponent = opponentId ? gameData.players[opponentId] : null;
-    const myHand = getInitialHand(myRole);
+    const myHand = gameData.players[playerId]?.hand || [];
 
     const myChoice = gameData.choices[playerId];
     const opponentChoice = opponentId ? gameData.choices[opponentId] : null;
 
-    const showRoundResult = gameData.lastRoundResult && gameData.round > 1;
+    const showRoundResult = gameData.lastRoundResult && (gameData.round > 1 || gameData.lastRoundResult.winnerId === null);
     const isWaitingForNextRound = Object.keys(gameData.choices).length === 2;
 
 
@@ -368,7 +392,7 @@ function App() {
                             <div className="flex space-x-2 sm:space-x-4 mb-6">
                                 {myHand.map((card, index) => (
                                     <Card
-                                        key={index}
+                                        key={`${card}-${index}`}
                                         value={card}
                                         isSelected={selectedCard === card}
                                         onClick={() => setSelectedCard(card)}
@@ -390,7 +414,7 @@ function App() {
                 {isWaitingForNextRound && showRoundResult && (
                     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
                         <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl text-center animate-fade-in-up">
-                             <h3 className="text-3xl font-bold mb-4">Round {gameData.round - 1} Result</h3>
+                             <h3 className="text-3xl font-bold mb-4">Round {gameData.round} Result</h3>
                             <div className="flex justify-center space-x-8 mb-6">
                                 <div>
                                     <p className="font-semibold">You Played</p>
@@ -408,7 +432,7 @@ function App() {
                                     {gameData.lastRoundResult.winnerId === playerId ? "You Win This Round!" : "You Lose This Round."}
                                 </p>
                             ) : (
-                                <p className="text-2xl text-gray-400">Draw!</p>
+                                <p className="text-2xl text-gray-400">Draw! The round continues.</p>
                             )}
                         </div>
                     </div>
