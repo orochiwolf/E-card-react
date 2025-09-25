@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, onSnapshot, updateDoc, collection, addDoc, getDoc } from "firebase/firestore";
 import { db } from './firebase.js';
 
@@ -89,6 +89,12 @@ function App() {
     const [error, setError] = useState("");
     const [selectedCard, setSelectedCard] = useState(null);
     const [selectedCardIndex, setSelectedCardIndex] = useState(null);
+    
+    // Fix race condition: Use ref to access latest gameData without dependency issues
+    // Problem: gameData changes frequently → nextRound recreated → useEffect runs → multiple timers
+    // Solution: Use ref to access current gameData without adding it to useCallback dependencies
+    const gameDataRef = useRef();
+    gameDataRef.current = gameData;
 
     // Persist playerId in localStorage
     useEffect(() => {
@@ -184,19 +190,21 @@ function App() {
     };
 
     const nextRound = useCallback(async () => {
-        if (!gameData || Object.keys(gameData.players).length < 2) return;
+        // Use ref to get latest gameData without causing dependency issues
+        const currentGameData = gameDataRef.current;
+        if (!currentGameData || Object.keys(currentGameData.players).length < 2) return;
 
-        let { round, players } = gameData;
+        let { round, players } = currentGameData;
         const playerIds = Object.keys(players);
         const emperorPlayerId = playerIds.find(id => players[id].role === 'emperor');
         const slavePlayerId = playerIds.find(id => players[id].role === 'slave');
 
-        if (!emperorPlayerId || !slavePlayerId || !gameData.choices[emperorPlayerId] || !gameData.choices[slavePlayerId]) {
+        if (!emperorPlayerId || !slavePlayerId || !currentGameData.choices[emperorPlayerId] || !currentGameData.choices[slavePlayerId]) {
             return; 
         }
 
-        const emperorChoice = gameData.choices[emperorPlayerId];
-        const slaveChoice = gameData.choices[slavePlayerId];
+        const emperorChoice = currentGameData.choices[emperorPlayerId];
+        const slaveChoice = currentGameData.choices[slavePlayerId];
         let winnerId = null;
 
         // Determine winner based on card interactions
@@ -253,7 +261,7 @@ function App() {
                 lastRoundResult: lastRoundResult,
             });
         }
-    }, [gameData, gameId]);
+    }, [gameId]); // Removed gameData from dependencies to prevent race condition
 
     useEffect(() => {
         if (gameData && gameData.status === 'playing' && Object.keys(gameData.choices).length === 2) {
@@ -262,7 +270,8 @@ function App() {
            }, 4000); // Wait 4 seconds to show results
            return () => clearTimeout(timer);
         }
-    }, [gameData, nextRound]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gameData]); // nextRound intentionally excluded to prevent race condition
 
 
     // --- Render Logic ---
