@@ -1,22 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { initializeApp } from "firebase/app";
-import { getFirestore, doc, onSnapshot, updateDoc, collection, addDoc, getDoc } from "firebase/firestore";
-
-// --- Firebase Configuration ---
-// IMPORTANT: Replace this with the config object from your Firebase project
-const firebaseConfig = {
-  apiKey: "AIzaSyAm3-L6I0S_2WAj-TMo2PLy7BazA472puM",
-  authDomain: "ecard-kaiji-game.firebaseapp.com",
-  projectId: "ecard-kaiji-game",
-  storageBucket: "ecard-kaiji-game.firebasestorage.app",
-  messagingSenderId: "309498290947",
-  appId: "1:309498290947:web:e41051265068e9da84ff36",
-  measurementId: "G-ZS1ZB2BBV5"
-};
-
-// Initialize Firebase and Firestore
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+import { doc, onSnapshot, updateDoc, collection, addDoc, getDoc } from "firebase/firestore";
+import { db } from './firebase.js';
 
 
 // --- Game Constants ---
