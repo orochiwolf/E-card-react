@@ -306,9 +306,36 @@ function App() {
     // Check if both players have made choices (waiting for next round)
     const isWaitingForNextRound = Object.keys(gameData.choices).length === 2;
     
-    // Show round result when both players have made choices and we have a result to show
-    // Fixed: Previous logic only showed round 1 results for draws, causing confusing delayed results
-    const showRoundResult = gameData.lastRoundResult && isWaitingForNextRound;
+    // Calculate current round result immediately when both players have played
+    let currentRoundResult = null;
+    if (isWaitingForNextRound && myChoice && opponentChoice) {
+        const emperorPlayerId = Object.keys(gameData.players).find(id => gameData.players[id].role === 'emperor');
+        const slavePlayerId = Object.keys(gameData.players).find(id => gameData.players[id].role === 'slave');
+        
+        const emperorChoice = gameData.choices[emperorPlayerId];
+        const slaveChoice = gameData.choices[slavePlayerId];
+        
+        let winnerId = null;
+        // Same logic as nextRound function
+        if (emperorChoice === 'E' && slaveChoice === 'S') {
+            winnerId = slavePlayerId;
+        } else if (emperorChoice === 'E' && slaveChoice === 'C') {
+            winnerId = emperorPlayerId;
+        } else if (emperorChoice === 'C' && slaveChoice === 'S') {
+            winnerId = emperorPlayerId;
+        } else if (emperorChoice === 'C' && slaveChoice === 'C') {
+            winnerId = null; // Draw
+        }
+        
+        currentRoundResult = {
+            [emperorPlayerId]: emperorChoice,
+            [slavePlayerId]: slaveChoice,
+            winnerId: winnerId,
+        };
+    }
+    
+    // Show the current round result when both players have played
+    const showRoundResult = currentRoundResult !== null;
 
 
     if (gameData.status === 'waiting') {
@@ -413,25 +440,25 @@ function App() {
                 </div>
 
                 {/* Round Result Modal */}
-                {isWaitingForNextRound && showRoundResult && (
+                {isWaitingForNextRound && showRoundResult && currentRoundResult && (
                     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
                         <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl text-center animate-fade-in-up">
                              <h3 className="text-3xl font-bold mb-4">Round {gameData.round} Result</h3>
                             <div className="flex justify-center space-x-8 mb-6">
                                 <div>
                                     <p className="font-semibold">You Played</p>
-                                    <Card value={gameData.lastRoundResult[playerId]} isDisabled={true} />
+                                    <Card value={currentRoundResult[playerId]} isDisabled={true} />
                                 </div>
-                                {opponentId && gameData.lastRoundResult[opponentId] && (
+                                {opponentId && currentRoundResult[opponentId] && (
                                   <div>
                                       <p className="font-semibold">Opponent Played</p>
-                                      <Card value={gameData.lastRoundResult[opponentId]} isDisabled={true} />
+                                      <Card value={currentRoundResult[opponentId]} isDisabled={true} />
                                   </div>
                                 )}
                             </div>
-                            {gameData.lastRoundResult.winnerId ? (
+                            {currentRoundResult.winnerId ? (
                                 <p className="text-2xl text-yellow-400">
-                                    {gameData.lastRoundResult.winnerId === playerId ? "You Win This Round!" : "You Lose This Round."}
+                                    {currentRoundResult.winnerId === playerId ? "You Win This Round!" : "You Lose This Round."}
                                 </p>
                             ) : (
                                 <p className="text-2xl text-gray-400">Draw! The round continues.</p>
