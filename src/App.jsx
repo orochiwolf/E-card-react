@@ -8,7 +8,7 @@ const EMPEROR = "E";
 const CITIZEN = "C";
 const SLAVE = "S";
 const MAX_ROUNDS = 12;
-const SWAP_ROUND = 4; // Swaps after round 3 (on round 4)
+const SWAP_ROUND = 4; // Swaps after round 4 (starting from round 5)
 
 // --- Helper Functions ---
 const getInitialHand = (role) => {
@@ -224,7 +224,9 @@ function App() {
             let newEmperorRole = players[emperorPlayerId].role;
             let newSlaveRole = players[slavePlayerId].role;
             
-            if (round === SWAP_ROUND - 1) {
+            // Role swap logic: swap roles after completing round 4
+            // This means roles swap when round === 4 (after round 4 finishes, starting round 5)
+            if (round === SWAP_ROUND) {
                 newEmperorRole = 'slave';
                 newSlaveRole = 'emperor';
             }
