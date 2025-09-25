@@ -303,8 +303,12 @@ function App() {
     const myChoice = gameData.choices[playerId];
     const opponentChoice = opponentId ? gameData.choices[opponentId] : null;
 
-    const showRoundResult = gameData.lastRoundResult && (gameData.round > 1 || gameData.lastRoundResult.winnerId === null);
+    // Check if both players have made choices (waiting for next round)
     const isWaitingForNextRound = Object.keys(gameData.choices).length === 2;
+    
+    // Show round result when both players have made choices and we have a result to show
+    // Fixed: Previous logic only showed round 1 results for draws, causing confusing delayed results
+    const showRoundResult = gameData.lastRoundResult && isWaitingForNextRound;
 
 
     if (gameData.status === 'waiting') {
