@@ -88,6 +88,7 @@ function App() {
     const [gameIdInput, setGameIdInput] = useState("");
     const [error, setError] = useState("");
     const [selectedCard, setSelectedCard] = useState(null);
+    const [selectedCardIndex, setSelectedCardIndex] = useState(null);
 
     // Persist playerId in localStorage
     useEffect(() => {
@@ -95,7 +96,7 @@ function App() {
         if (storedPlayerId) {
             setPlayerId(storedPlayerId);
         } else {
-            const newPlayerId = `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const newPlayerId = `player_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
             localStorage.setItem('e-card-playerId', newPlayerId);
             setPlayerId(newPlayerId);
         }
@@ -162,25 +163,24 @@ function App() {
 
 
     const playCard = async () => {
-        if (!selectedCard || !gameData || !playerId) return;
+        if (!selectedCard || selectedCardIndex === null || !gameData || !playerId) return;
 
         const myCurrentHand = gameData.players[playerId]?.hand;
-        if (!myCurrentHand || !myCurrentHand.includes(selectedCard)) {
+        if (!myCurrentHand || selectedCardIndex < 0 || selectedCardIndex >= myCurrentHand.length) {
             setError("Invalid card choice.");
             return;
         }
 
-        const cardIndex = myCurrentHand.indexOf(selectedCard);
+        // Use the selectedCardIndex for precise card removal
         const newHand = [...myCurrentHand];
-        if (cardIndex > -1) {
-            newHand.splice(cardIndex, 1);
-        }
+        newHand.splice(selectedCardIndex, 1);
         
         await updateDoc(doc(db, "games", gameId), {
             [`choices.${playerId}`]: selectedCard,
             [`players.${playerId}.hand`]: newHand
         });
         setSelectedCard(null); // Deselect after playing
+        setSelectedCardIndex(null);
     };
 
     const nextRound = useCallback(async () => {
@@ -378,8 +378,11 @@ function App() {
                                     <Card
                                         key={`${card}-${index}`}
                                         value={card}
-                                        isSelected={selectedCard === card}
-                                        onClick={() => setSelectedCard(card)}
+                                        isSelected={selectedCardIndex === index}
+                                        onClick={() => {
+                                            setSelectedCard(card);
+                                            setSelectedCardIndex(index);
+                                        }}
                                     />
                                 ))}
                             </div>
