@@ -42,10 +42,53 @@ const Card = ({ value, isSelected, onClick, isDisabled }) => {
     );
 };
 
-const GameLobby = ({ createGame, joinGame, gameIdInput, setGameIdInput, error }) => (
-    <div className="w-full max-w-md mx-auto bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl shadow-2xl text-center">
-        <h1 className="text-5xl font-extrabold text-white mb-2">E-CARD</h1>
-        <p className="text-yellow-400 mb-8 font-semibold">The Emperor's Gamble</p>
+const GameLobby = ({ createGame, joinGame, gameIdInput, setGameIdInput, error }) => {
+    // Manual test controls for debugging
+    const triggerError = () => {
+        throw new Error('Manual test error for ErrorBoundary testing');
+    };
+    
+    const testLocalStorage = () => {
+        const currentGameId = localStorage.getItem('current-game-id');
+        const rejoinGameId = localStorage.getItem('rejoin-game-id');
+        const backupRejoinGameId = localStorage.getItem('ecard-backup-rejoin-id');
+        const playerId = localStorage.getItem('e-card-playerId');
+        
+        console.log('📋 LocalStorage Debug:');
+        console.log('  current-game-id:', currentGameId);
+        console.log('  rejoin-game-id:', rejoinGameId);
+        console.log('  backup-rejoin-id:', backupRejoinGameId);
+        console.log('  e-card-playerId:', playerId);
+        
+        // Check for ErrorBoundary debug log from previous session
+        const errorBoundaryLog = localStorage.getItem('error-boundary-debug-log');
+        if (errorBoundaryLog) {
+            console.log('🔄 ErrorBoundary Debug Log from previous session:');
+            try {
+                const logEntries = JSON.parse(errorBoundaryLog);
+                logEntries.forEach(entry => console.log(entry));
+                // Clear the log after displaying it
+                localStorage.removeItem('error-boundary-debug-log');
+            } catch (e) {
+                console.log('Error parsing debug log:', e);
+            }
+        } else {
+            console.log('🚫 No ErrorBoundary debug log found');
+        }
+        
+        // Also test setting rejoin-game-id manually
+        if (currentGameId) {
+            localStorage.setItem('rejoin-game-id', currentGameId);
+            console.log('✅ Manually set rejoin-game-id to:', currentGameId);
+        } else {
+            console.log('❌ No current-game-id to use');
+        }
+    };
+    
+    return (
+        <div className="w-full max-w-md mx-auto bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl shadow-2xl text-center">
+            <h1 className="text-5xl font-extrabold text-white mb-2">E-CARD</h1>
+            <p className="text-yellow-400 mb-8 font-semibold">The Emperor's Gamble</p>
 
         <button
             onClick={createGame}
@@ -75,13 +118,36 @@ const GameLobby = ({ createGame, joinGame, gameIdInput, setGameIdInput, error })
                 Join Game
             </button>
         </div>
+        
+        {/* Development testing controls */}
+        {process.env.NODE_ENV === 'development' && (
+            <div className="mt-8 p-4 bg-gray-900/50 rounded-lg border border-yellow-600">
+                <h3 className="text-yellow-400 font-bold mb-3">🔧 Debug Controls</h3>
+                <div className="space-y-2">
+                    <button
+                        onClick={testLocalStorage}
+                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-bold py-2 px-4 rounded text-sm"
+                    >
+                        📋 Check LocalStorage
+                    </button>
+                    <button
+                        onClick={triggerError}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm"
+                    >
+                        💥 Test Error Boundary
+                    </button>
+                </div>
+            </div>
+        )}
+        
         {error && <p className="text-red-500 mt-4 animate-pulse">{error}</p>}
-    </div>
-);
+        </div>
+    );
+};
 
 
 // --- Main App Component ---
-function App() {
+function App({ onGameIdChange }) {
     const [gameId, setGameId] = useState(null);
     const [gameData, setGameData] = useState(null);
     const [playerId, setPlayerId] = useState(null);
@@ -107,6 +173,73 @@ function App() {
             setPlayerId(newPlayerId);
         }
     }, []);
+    
+    // Auto-rejoin game after error recovery
+    useEffect(() => {
+        console.log('🔄 useEffect[auto-rejoin]: Auto-rejoin effect running');
+        
+        // Check URL parameter for rejoin game ID (primary method)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlRejoinGameId = urlParams.get('rejoin');
+        
+        // Check localStorage as fallback (secondary method)
+        const rejoinGameId = localStorage.getItem('rejoin-game-id');
+        const backupRejoinGameId = localStorage.getItem('ecard-backup-rejoin-id');
+        
+        // Use URL param first, then localStorage as fallback
+        const finalRejoinGameId = urlRejoinGameId || rejoinGameId || backupRejoinGameId;
+        
+        console.log('🔍 App startup: checking URL param:', urlRejoinGameId, 'localStorage:', rejoinGameId, 'backup:', backupRejoinGameId, 'final:', finalRejoinGameId, 'playerId:', playerId, 'gameId:', gameId);
+        if (finalRejoinGameId && playerId && !gameId) {
+            console.log('🔄 Auto-rejoining game:', finalRejoinGameId);
+            
+            // Clear both stored rejoin IDs to prevent repeated attempts
+            localStorage.removeItem('rejoin-game-id');
+            localStorage.removeItem('ecard-backup-rejoin-id');
+            
+            // Clear URL parameter if it was used
+            if (urlRejoinGameId) {
+                const newUrl = new URL(window.location);
+                newUrl.searchParams.delete('rejoin');
+                window.history.replaceState({}, '', newUrl.toString());
+                console.log('🧹 Cleaned up URL parameter');
+            }
+            
+            // Set the game input and automatically trigger join
+            setGameIdInput(finalRejoinGameId);
+            
+            // Auto-join the game after a short delay to ensure state is updated
+            setTimeout(async () => {
+                console.log('🔍 Checking game exists:', finalRejoinGameId);
+                const gameRef = doc(db, "games", finalRejoinGameId);
+                const gameSnap = await getDoc(gameRef);
+                
+                if (gameSnap.exists()) {
+                    const game = gameSnap.data();
+                    console.log('🎮 Game found, checking if player exists:', game.players[playerId] ? 'YES' : 'NO');
+                    if (game.players[playerId]) {
+                        // Player already exists in game, rejoin
+                        console.log('✅ Auto-rejoining successful!');
+                        setGameId(finalRejoinGameId);
+                        onGameIdChange?.(finalRejoinGameId);
+                        setError("");
+                        // Clear current-game-id now that we've successfully rejoined
+                        localStorage.removeItem('current-game-id');
+                    } else {
+                        console.log('❌ Player not found in game');
+                        setError('Could not rejoin game: player not found');
+                        // Clear stale localStorage on failed rejoin
+                        localStorage.removeItem('current-game-id');
+                    }
+                } else {
+                    console.log('❌ Game not found');
+                    setError('Could not rejoin game: game not found');
+                    // Clear stale localStorage on failed rejoin
+                    localStorage.removeItem('current-game-id');
+                }
+            }, 100);
+        }
+    }, [playerId, gameId, onGameIdChange]);
 
     // Subscribe to game updates
     useEffect(() => {
@@ -120,6 +253,25 @@ function App() {
             }
         });
         return () => unsub();
+    }, [gameId]);
+
+    // Persist current gameId for recovery purposes
+    useEffect(() => {
+        console.log('💾 useEffect[gameId]: gameId persistence effect running, gameId:', gameId);
+        if (gameId) {
+            console.log('💾 Setting current-game-id to:', gameId);
+            localStorage.setItem('current-game-id', gameId);
+        } else {
+            // Only remove current-game-id if we're not in the middle of auto-rejoin
+            const rejoinGameId = localStorage.getItem('rejoin-game-id');
+            console.log('💾 gameId is null, checking rejoin-game-id:', rejoinGameId);
+            if (!rejoinGameId) {
+                console.log('💾 No rejoin-game-id, removing current-game-id');
+                localStorage.removeItem('current-game-id');
+            } else {
+                console.log('💾 Found rejoin-game-id, keeping current-game-id');
+            }
+        }
     }, [gameId]);
 
 
@@ -137,6 +289,7 @@ function App() {
             createdAt: new Date(),
         });
         setGameId(newGameRef.id);
+        onGameIdChange?.(newGameRef.id);
         setError("");
     };
 
@@ -155,9 +308,11 @@ function App() {
                     status: 'playing',
                 });
                 setGameId(gameIdInput);
+                onGameIdChange?.(gameIdInput);
                 setError("");
             } else if (game.players[playerId]) {
                 setGameId(gameIdInput); // Allow rejoining
+                onGameIdChange?.(gameIdInput);
                 setError("");
             } else {
                 setError("Game is already full.");
@@ -338,6 +493,30 @@ function App() {
     const showRoundResult = currentRoundResult !== null;
 
 
+    // Debug functions available in all game states
+    const testLocalStorage = () => {
+        const currentGameId = localStorage.getItem('current-game-id');
+        const rejoinGameId = localStorage.getItem('rejoin-game-id');
+        const playerId = localStorage.getItem('e-card-playerId');
+        
+        console.log('📋 LocalStorage Debug:');
+        console.log('  current-game-id:', currentGameId);
+        console.log('  rejoin-game-id:', rejoinGameId);
+        console.log('  e-card-playerId:', playerId);
+        
+        // Also test setting rejoin-game-id manually
+        if (currentGameId) {
+            localStorage.setItem('rejoin-game-id', currentGameId);
+            console.log('✅ Manually set rejoin-game-id to:', currentGameId);
+        } else {
+            console.log('❌ No current-game-id to use');
+        }
+    };
+    
+    const triggerError = () => {
+        throw new Error('Manual test error for ErrorBoundary testing');
+    };
+
     if (gameData.status === 'waiting') {
         return (
             <main className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
@@ -347,6 +526,27 @@ function App() {
                     <strong className="text-2xl font-mono tracking-widest text-yellow-400">{gameId}</strong>
                     <p className="text-xs text-gray-500 mt-2">Click to copy</p>
                  </div>
+                 
+                 {/* Debug panel for waiting screen */}
+                 {process.env.NODE_ENV === 'development' && (
+                     <div className="mt-8 p-4 bg-gray-900/50 rounded-lg border border-yellow-600 max-w-md">
+                         <h3 className="text-yellow-400 font-bold mb-3 text-center">🔧 Debug Controls</h3>
+                         <div className="space-y-2">
+                             <button
+                                 onClick={testLocalStorage}
+                                 className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-bold py-2 px-4 rounded text-sm"
+                             >
+                                 📋 Check LocalStorage
+                             </button>
+                             <button
+                                 onClick={triggerError}
+                                 className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm"
+                             >
+                                 💥 Test Error Boundary
+                             </button>
+                         </div>
+                     </div>
+                 )}
             </main>
         )
     }
@@ -378,6 +578,22 @@ function App() {
                     <div>
                         <h1 className="text-2xl sm:text-3xl font-bold text-yellow-400">Round {gameData.round} / {MAX_ROUNDS}</h1>
                         <p className="text-gray-400 text-sm">Game ID: {gameId}</p>
+                        {process.env.NODE_ENV === 'development' && (
+                            <button 
+                                onClick={() => {
+                                    // Simulate a more realistic error that happens during render
+                                    setTimeout(() => {
+                                        // This will trigger a re-render with invalid data
+                                        const fakeData = { players: null };
+                                        setGameData(fakeData);
+                                    }, 100);
+                                }}
+                                className="ml-4 px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                                title="Test Error Boundary (Realistic)"
+                            >
+                                💥 Test Crash
+                            </button>
+                        )}
                     </div>
                     <div className="text-right">
                         <p>You: <span className="font-bold">{gameData.players[playerId]?.score || 0}</span></p>
