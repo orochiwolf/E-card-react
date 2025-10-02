@@ -2,18 +2,17 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
-// TODO: Replace the following with your app's Firebase project configuration
-// Your web app's Firebase configuration
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Firebase configuration using environment variables
+// Note: These values will still be visible in the client bundle
+// Security is enforced through Firestore rules and domain restrictions
 const firebaseConfig = {
-  apiKey: "AIzaSyAm3-L6I0S_2WAj-TMo2PLy7BazA472puM",
-  authDomain: "ecard-kaiji-game.firebaseapp.com",
-  projectId: "ecard-kaiji-game",
-  storageBucket: "ecard-kaiji-game.firebasestorage.app",
-  messagingSenderId: "309498290947",
-  appId: "1:309498290947:web:e41051265068e9da84ff36",
-  measurementId: "G-ZS1ZB2BBV5"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyAm3-L6I0S_2WAj-TMo2PLy7BazA472puM",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "ecard-kaiji-game.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "ecard-kaiji-game",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "ecard-kaiji-game.firebasestorage.app",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "309498290947",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:309498290947:web:e41051265068e9da84ff36",
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || "G-ZS1ZB2BBV5"
 };
 
 // Initialize Firebase

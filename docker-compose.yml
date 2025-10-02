@@ -5,5 +5,8 @@ services:
       - "3000:3000"
     volumes:
       - ./src:/app/src
+      - ./build:/app/build
+      - ./package.json:/app/package.json
+      - ./server.js:/app/server.js
     environment:
       - CHOKIDAR_USEPOLLING=true

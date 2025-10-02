@@ -1,0 +1,24 @@
+{
+  "name": "e-card-kaiji-game",
+  "version": "0.1.0",
+  "private": true,
+  "main": "server-cpanel.js",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "scripts": {
+    "start": "node server-cpanel.js",
+    "serve": "node server-cpanel.js"
+  },
+  "keywords": [
+    "card-game",
+    "react",
+    "firebase",
+    "multiplayer"
+  ],
+  "description": "E-Card game from Kaiji anime - multiplayer card game with Firebase"
+}
