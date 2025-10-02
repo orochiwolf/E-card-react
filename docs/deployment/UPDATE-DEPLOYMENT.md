@@ -14,8 +14,10 @@
 **What's included:**
 - Latest React build with updated Firebase config
 - Same cPanel-optimized server (`server-cpanel.js`)
-- Production environment variables (`.env.production`)
+- Production environment variables template (`.env.production`)
 - All static assets and dependencies
+
+**Note**: Update `.env.production` with your actual Firebase keys before deployment.
 
 ## 🚀 Deployment Steps for o2switch cPanel
 

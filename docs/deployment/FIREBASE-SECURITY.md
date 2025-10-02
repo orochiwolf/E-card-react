@@ -107,7 +107,9 @@ Your Firebase config now uses environment variables, which is a good practice fo
 
 ```bash
 # .env.production contains your config
-REACT_APP_FIREBASE_API_KEY=AIzaSyAm3-L6I0S_2WAj-TMo2PLy7BazA472puM
+REACT_APP_FIREBASE_API_KEY=your-actual-firebase-api-key
+REACT_APP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+REACT_APP_FIREBASE_PROJECT_ID=your-project-id
 # ... other config values
 ```
 
