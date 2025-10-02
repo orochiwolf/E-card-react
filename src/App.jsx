@@ -578,6 +578,7 @@ function App({ onGameIdChange }) {
                     <div>
                         <h1 className="text-2xl sm:text-3xl font-bold text-yellow-400">Round {gameData.round} / {MAX_ROUNDS}</h1>
                         <p className="text-gray-400 text-sm">Game ID: {gameId}</p>
+                        <p className="text-gray-500 text-xs">v3.0-env • Built: {new Date().toISOString().slice(0,16)}</p>
                         {process.env.NODE_ENV === 'development' && (
                             <button 
                                 onClick={() => {
