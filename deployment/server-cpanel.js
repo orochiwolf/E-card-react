@@ -20,8 +20,8 @@ app.use((req, res, next) => {
 
 // Serve static files from the React app build directory
 app.use(express.static(path.join(__dirname, 'build'), {
-  maxAge: '1y', // Cache static assets for 1 year
-  etag: false
+  maxAge: '1h', // Cache static assets for 1 hour (much more reasonable)
+  etag: true    // Enable etag for better cache invalidation
 }));
 
 // API routes
